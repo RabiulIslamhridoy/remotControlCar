@@ -1,0 +1,260 @@
+#ifdef ESP8266
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#elif defined(ESP32)
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#else
+#error "Board not found"
+#endif
+
+#include <WebSocketsServer.h>
+
+#include <ArduinoJson.h>
+#include <Ticker.h>
+
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266HTTPClient.h>
+#include <SoftwareSerial.h>
+#include <espnow.h>
+#include <ESP8266mDNS.h>
+
+String move;
+
+
+const char* ssid = "ProjectCse";
+const char* password = "";
+int max_connection = 8;
+uint8_t broadcastAddress[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };  //universal mac address
+
+
+
+char frontPage[] PROGMEM = R"=====(
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Websockets</title>
+    <style>
+.box{
+    height: 350px;
+    width: 200px;
+   
+    background-color: rgba(216, 216, 215, 0.875);
+    text-align:left;
+   
+    
+}      
+    </style>
+</head>
+
+<body>
+<br>
+<br>
+<button  onclick="window.location='/?MOVE=3'" type="submit" style="height:85px; width:85px">Left</button><br>
+
+<button  onclick="window.location='/?MOVE=4'" type="submit" style="height:85px; width:85px">Right</button><br>
+
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<button  onclick="window.location='/?MOVE=1'" type="submit" style="height:100px; width:85px">Back</button>
+<button  onclick="window.location='/?MOVE=0'" type="submit" style="height:100px; width:85px">Hold</button>
+<button  onclick="window.location='/?MOVE=2'" type="submit" style="height:100px; width:85px">Ford</button>
+
+    <script>
+        var socket = new WebSocket('ws://'+location.hostname+':81/');
+
+        socket.onmessage = function(event) {
+            var data = JSON.parse(event.data);
+        };
+    </script>
+</body>
+</html>
+
+
+)=====";
+
+
+
+void send_sensor();
+Ticker timer;
+
+
+
+
+String URL;
+int httpCode;
+String payload;
+
+
+
+ESP8266WebServer server(80);  
+HTTPClient http;
+
+// static ip address
+IPAddress ip(10, 10, 10, 1);
+IPAddress gateway(10, 10, 10, 1);
+IPAddress subnet(255, 255, 255, 0);
+
+
+
+
+WebSocketsServer websockets(81);
+
+
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+
+  switch (type) {
+    case WStype_DISCONNECTED:
+      Serial.printf("[%u] Disconnected!\n", num);
+      break;
+    case WStype_CONNECTED:
+      {
+        IPAddress ip = websockets.remoteIP(num);
+        Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+      }
+      break;
+    case WStype_TEXT:
+      Serial.printf("[%u] get Text: %s\n", num, payload);
+      String message = String((char*)(payload));
+      Serial.println(message);
+
+
+      DynamicJsonDocument doc(200);
+
+      DeserializationError error = deserializeJson(doc, message);
+
+      if (error) {
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
+        return;
+      }
+  }
+}
+
+void setup(void) {
+
+  pinMode(D1,OUTPUT);
+  pinMode(D2,OUTPUT);
+  pinMode(D3,OUTPUT);
+  pinMode(D4,OUTPUT);
+  pinMode(D5,OUTPUT);
+
+
+
+  if (MDNS.begin("ESP")) {  //esp.local/
+    Serial.println("MDNS responder started");
+  }
+
+  Serial.begin(115200);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.disconnect();
+  WiFi.softAP(ssid, password, 1, false, max_connection);
+  WiFi.softAPConfig(ip, gateway, subnet);
+  IPAddress myIP = WiFi.softAPIP();
+
+  server.on("/", handleroot);  // start server for receving data from user
+  server.begin();              //start server
+  websockets.begin();
+  websockets.onEvent(webSocketEvent);
+  timer.attach(0.1, send_sensor);
+}
+
+void handleroot() {
+  server.send_P(200, "text/html", frontPage); 
+ 
+  String data1 = server.arg("MOVE");
+
+
+if(data1=="0" || data1=="1" || data1=="2" || data1=="3" || data1=="4"){
+  move=data1;
+  }
+
+
+}
+
+
+
+
+
+
+void loop(void) {
+
+
+  server.handleClient();
+
+  websockets.loop();
+
+if(move=="1"){
+digitalWrite(D1,HIGH);
+digitalWrite(D2,LOW);
+digitalWrite(D3,LOW);
+digitalWrite(D4,LOW);
+digitalWrite(D5,LOW);
+
+}
+if(move=="2"){
+digitalWrite(D1,LOW);
+digitalWrite(D2,HIGH);
+digitalWrite(D3,LOW);
+digitalWrite(D4,LOW);
+digitalWrite(D5,LOW);
+}
+if(move=="3"){
+digitalWrite(D1,LOW);
+digitalWrite(D2,LOW);
+digitalWrite(D3,HIGH);
+digitalWrite(D4,LOW);
+digitalWrite(D5,LOW);
+
+}
+if(move=="4"){
+digitalWrite(D1,LOW);
+digitalWrite(D2,LOW);
+digitalWrite(D3,LOW);
+digitalWrite(D4,HIGH);
+digitalWrite(D5,LOW);
+
+}
+if(move=="0"){
+digitalWrite(D1,LOW);
+digitalWrite(D2,LOW);
+digitalWrite(D3,LOW);
+digitalWrite(D4,LOW);
+digitalWrite(D5,HIGH);
+
+}
+
+
+
+
+
+}
+
+void send_sensor() {
+}
